@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "치지직 부스터",
+  "description": "치지직 광고 차단·팝업 자동 닫기 + 방송 화질 자동 설정·그리드 우회.",
+  "version": "0.1.0",
+  "default_locale": "ko",
+  "permissions": ["storage", "declarativeNetRequest"],
+  "host_permissions": ["*://chzzk.naver.com/*", "*://*.chzzk.naver.com/*"],
+  "background": {
+    "service_worker": "src/background/sw.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://chzzk.naver.com/*", "*://*.chzzk.naver.com/*"],
+      "js": ["src/content/main-world.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    },
+    {
+      "matches": ["*://chzzk.naver.com/*", "*://*.chzzk.naver.com/*"],
+      "js": ["src/content/content.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      { "id": "adblock", "enabled": false, "path": "rules/adblock.json" }
+    ]
+  },
+  "icons": {
+    "16": "assets/icon16.png",
+    "32": "assets/icon32.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  },
+  "action": {
+    "default_icon": {
+      "16": "assets/icon16.png",
+      "32": "assets/icon32.png",
+      "48": "assets/icon48.png",
+      "128": "assets/icon128.png"
+    },
+    "default_popup": "src/popup/popup.html",
+    "default_title": "치지직 부스터"
+  },
+  "options_page": "src/options/options.html"
+}
