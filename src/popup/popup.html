@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<style>
+  :root{
+    --chz-green:#00FFA3; --chz-green-dim:#00D488;
+    --chz-green-glow:rgba(0,255,163,.25);
+    --bg-base:#0A0A0C; --bg-surface:#141417; --bg-surface-2:#1E1E23;
+    --border:#2A2A31; --text-primary:#F5F5F7; --text-secondary:#9A9AA5;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    width:320px; background:var(--bg-base); color:var(--text-primary);
+    font-family:'Pretendard',-apple-system,'Segoe UI','Malgun Gothic',sans-serif;
+    padding:16px; -webkit-font-smoothing:antialiased;
+  }
+  .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+  .brand{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:700;letter-spacing:-.02em}
+  .bolt{color:var(--chz-green);font-size:18px;filter:drop-shadow(0 0 6px var(--chz-green-glow))}
+  .badge{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;
+    color:var(--chz-green);background:rgba(0,255,163,.1);padding:4px 9px;border-radius:20px}
+  .badge.idle{color:var(--text-secondary);background:var(--bg-surface-2)}
+  .badge .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+  .row{display:flex;align-items:center;gap:12px;background:var(--bg-surface);
+    border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:8px}
+  .row .icon{font-size:18px;flex-shrink:0;width:22px;text-align:center}
+  .row .body{flex:1;min-width:0}
+  .row .label{font-size:14px;font-weight:600}
+  .row .desc{font-size:12px;color:var(--text-secondary);margin-top:2px}
+  .switch{position:relative;width:44px;height:24px;flex-shrink:0}
+  .switch input{opacity:0;width:0;height:0}
+  .track{position:absolute;inset:0;background:var(--bg-surface-2);
+    border-radius:24px;cursor:pointer;transition:background .2s ease}
+  .track::before{content:"";position:absolute;height:20px;width:20px;left:2px;top:2px;
+    background:#fff;border-radius:50%;transition:transform .2s ease}
+  .switch input:checked + .track{background:var(--chz-green);box-shadow:0 0 12px var(--chz-green-glow)}
+  .switch input:checked + .track::before{transform:translateX(20px)}
+  .switch input:focus-visible + .track{outline:2px solid var(--chz-green);outline-offset:2px}
+  .selectwrap{position:relative;margin-top:8px}
+  select{width:100%;appearance:none;background:var(--bg-surface-2);color:var(--text-primary);
+    border:1px solid var(--border);border-radius:10px;padding:10px 36px 10px 12px;
+    font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+  select:focus-visible{outline:none;border-color:var(--chz-green);box-shadow:0 0 0 3px var(--chz-green-glow)}
+  .selectwrap::after{content:"▾";position:absolute;right:14px;top:50%;transform:translateY(-50%);
+    color:var(--chz-green);pointer-events:none;font-size:12px}
+  .row.stacked{flex-direction:column;align-items:stretch}
+  .row.stacked .head{display:flex;align-items:center;gap:12px}
+  .footer{display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding:0 2px}
+  .saved{font-size:12px;font-weight:600;color:var(--chz-green);opacity:0;transition:opacity .25s}
+  .saved.show{opacity:1}
+  .more{font-size:12px;color:var(--text-secondary);text-decoration:none;cursor:pointer}
+  .more:hover{color:var(--chz-green-dim)}
+  @media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="brand">치지직 부스터</div>
+    <div class="badge" id="statusBadge"><span class="dot"></span><span id="statusText">대기 중</span></div>
+  </div>
+
+  <div class="row">
+    <div class="body">
+      <div class="label">광고 차단</div>
+      <div class="desc" id="adCount">광고 스킵 준비됨</div>
+    </div>
+    <label class="switch">
+      <input type="checkbox" id="adblock" aria-label="광고 차단">
+      <span class="track"></span>
+    </label>
+  </div>
+
+  <div class="row">
+    <div class="body">
+      <div class="label">팝업 자동 닫기</div>
+      <div class="desc">방해 팝업·코치마크 자동 제거</div>
+    </div>
+    <label class="switch">
+      <input type="checkbox" id="autoclose" aria-label="팝업 자동 닫기">
+      <span class="track"></span>
+    </label>
+  </div>
+
+  <div class="row">
+    <div class="body">
+      <div class="label">그리드 우회</div>
+      <div class="desc">P2P/Grid 스트리밍 경로 비활성화</div>
+    </div>
+    <label class="switch">
+      <input type="checkbox" id="gridBypass" aria-label="그리드 우회">
+      <span class="track"></span>
+    </label>
+  </div>
+
+  <div class="row stacked">
+    <div class="head">
+      <div class="body">
+        <div class="label">화질 자동 설정</div>
+        <div class="desc">켜면 아래 화질로 자동 전환</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="autoQuality" aria-label="화질 자동 설정">
+        <span class="track"></span>
+      </label>
+    </div>
+    <div class="selectwrap">
+      <select id="quality" aria-label="기본 화질 선택">
+        <option value="1080p">1080p (권장)</option>
+        <option value="720p">720p</option>
+        <option value="480p">480p</option>
+        <option value="360p">360p</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span class="saved" id="saved">저장됨</span>
+    <a class="more" id="openOptions">더 많은 설정 ›</a>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
