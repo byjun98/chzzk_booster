@@ -190,11 +190,22 @@
   }
 
   function findAdSkipButton() {
+    // 1) pzp/일반 광고 스킵 버튼
     const btns = document.querySelectorAll('button');
     for (const b of btns) {
       if (b.offsetParent === null) continue;
       const meta = `${b.getAttribute('aria-label') || ''} ${b.className || ''} ${b.textContent || ''}`;
       if (/(광고[\s\S]{0,6}(skip|스킵|건너))|ad[-_]?skip/i.test(meta)) return b;
+    }
+    // 2) GFP(fxview) 광고 스킵: .skip_area / .txt_skip
+    //    'N초 후 SKIP' 카운트다운 중엔 무시하고, 'SKIP'만 남아 클릭 가능해졌을 때만 클릭
+    //    ('광고 페이지 보기'(link_more)는 절대 클릭하지 않음)
+    const gfp = document.querySelector('.skip_area, [class*="skip_area"], .btn_skip, [class*="btn_skip"], .txt_skip, [class*="txt_skip"]');
+    if (gfp && gfp.offsetParent !== null) {
+      const t = (gfp.textContent || '').trim();
+      if (/skip/i.test(t) && !/후|초|\d/.test(t)) {
+        return gfp.closest('.skip_area, [class*="skip_area"], .btn_skip, [class*="btn_skip"]') || gfp;
+      }
     }
     return null;
   }

@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VAS_RE = /nam\.veta\.naver\.com\/vas/i;
+  const AD_RE = /(^https?:\/\/[^/]*(?:veta|glad|ad)[^/]*\/)|\/(?:vas|vast|ad|ads)(?:[/?#]|$)/i;
   const LIVE_DETAIL_RE = /live-detail/i;
   const NOADS_FLAG = '__cb_noads';
   const GRID_BYPASS_FLAG = '__cb_grid_bypass';
@@ -11,12 +11,51 @@
   const noAdsEnabled = () => flagEnabled(NOADS_FLAG);
   const gridBypassEnabled = () => flagEnabled(GRID_BYPASS_FLAG);
 
+  function clearAdBreaks(value) {
+    let changed = false;
+    if (!value || typeof value !== 'object') return changed;
+
+    if (Array.isArray(value)) {
+      value.forEach((item) => { if (clearAdBreaks(item)) changed = true; });
+      return changed;
+    }
+
+    Object.keys(value).forEach((key) => {
+      if (key === 'adBreaks' && Array.isArray(value[key]) && value[key].length > 0) {
+        value[key] = [];
+        changed = true;
+      } else if (clearAdBreaks(value[key])) {
+        changed = true;
+      }
+    });
+    return changed;
+  }
+
+  // 치지직 API 응답의 skipPreRollAd 를 true 로 강제 → 플레이어가 프리롤 광고를 건너뛰게 유도
+  function forceSkipPreroll(value) {
+    let changed = false;
+    if (!value || typeof value !== 'object') return changed;
+    if (Array.isArray(value)) {
+      value.forEach((item) => { if (forceSkipPreroll(item)) changed = true; });
+      return changed;
+    }
+    Object.keys(value).forEach((key) => {
+      if (key === 'skipPreRollAd' && value[key] !== true) {
+        value[key] = true;
+        changed = true;
+      } else if (forceSkipPreroll(value[key])) {
+        changed = true;
+      }
+    });
+    return changed;
+  }
+
   function stripAds(text) {
     try {
       const j = JSON.parse(text);
-      const n = Array.isArray(j.adBreaks) ? j.adBreaks.length : -1;
-      if (n > 0) {
-        j.adBreaks = [];
+      let changed = clearAdBreaks(j);
+      if (forceSkipPreroll(j)) changed = true;
+      if (changed) {
         return JSON.stringify(j);
       }
     } catch (_) {}
@@ -95,11 +134,17 @@
     return new Response(text, { status: res.status, statusText: res.statusText, headers });
   }
 
+  function shouldStripAds(url, res) {
+    if (!noAdsEnabled() || typeof url !== 'string') return false;
+    if (AD_RE.test(url)) return true;
+    const contentType = res && res.headers && res.headers.get('content-type');
+    return /chzzk|naver/i.test(url) && /json/i.test(contentType || '');
+  }
+
   const origFetch = window.fetch;
   window.fetch = async function (...args) {
     const req = args[0];
     const url = (req && typeof req === 'object' && 'url' in req) ? req.url : req;
-    const isVas = typeof url === 'string' && VAS_RE.test(url);
     const isLiveDetail = typeof url === 'string' && LIVE_DETAIL_RE.test(url);
     let res;
     try {
@@ -107,11 +152,12 @@
     } catch (err) {
       throw err;
     }
-    if ((isVas && noAdsEnabled()) || (isLiveDetail && gridBypassEnabled())) {
+    const shouldPatchAds = shouldStripAds(url, res);
+    if (shouldPatchAds || (isLiveDetail && gridBypassEnabled())) {
       try {
         const text = await res.clone().text();
         let modified = text;
-        if (isVas && noAdsEnabled()) modified = stripAds(modified);
+        if (shouldPatchAds) modified = stripAds(modified);
         if (isLiveDetail && gridBypassEnabled()) modified = stripGrid(modified);
         if (modified !== text) {
           return makeTextResponse(res, modified);
@@ -131,14 +177,15 @@
     const url = this.__cb_url;
     const shouldPatch =
       typeof url === 'string' &&
-      ((VAS_RE.test(url) && noAdsEnabled()) || (LIVE_DETAIL_RE.test(url) && gridBypassEnabled()));
+      ((noAdsEnabled() && (AD_RE.test(url) || /chzzk|naver/i.test(url))) || (LIVE_DETAIL_RE.test(url) && gridBypassEnabled()));
     if (shouldPatch) {
       this.addEventListener('readystatechange', function onRSC() {
         if (this.readyState === 4) {
           try {
             const original = this.responseText;
             let modified = original;
-            if (VAS_RE.test(url) && noAdsEnabled()) modified = stripAds(modified);
+            const contentType = this.getResponseHeader('content-type') || '';
+            if (noAdsEnabled() && (AD_RE.test(url) || /json/i.test(contentType))) modified = stripAds(modified);
             if (LIVE_DETAIL_RE.test(url) && gridBypassEnabled()) modified = stripGrid(modified);
             if (modified !== original) {
               Object.defineProperty(this, 'responseText', { configurable: true, get: () => modified });
