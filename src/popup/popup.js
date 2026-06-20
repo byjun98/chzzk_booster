@@ -1,4 +1,4 @@
-const DEFAULTS = { autoQuality: true, quality: '1080p', gridBypass: true, adBlockVas: true, adSkip: true, autoclose: true };
+const DEFAULTS = { autoQuality: true, quality: '1080p', gridBypass: true, adBlockVas: true, adSpeedup: true, adSkip: true, autoclose: true };
 const $ = (s) => document.querySelector(s);
 const savedFlag = $('#saved');
 
@@ -12,6 +12,7 @@ function save() {
   const adOn = $('#adblock').checked;
   chrome.storage.sync.set({
     adBlockVas: adOn,
+    adSpeedup: adOn,
     adSkip: adOn,
     autoclose: $('#autoclose').checked,
     gridBypass: $('#gridBypass').checked,
@@ -24,7 +25,7 @@ function save() {
   $('#' + id).addEventListener('change', save));
 
 chrome.storage.sync.get(DEFAULTS, (s) => {
-  $('#adblock').checked = s.adBlockVas || s.adSkip;
+  $('#adblock').checked = s.adBlockVas || s.adSpeedup || s.adSkip;
   $('#autoclose').checked = s.autoclose;
   $('#gridBypass').checked = s.gridBypass;
   $('#autoQuality').checked = s.autoQuality;

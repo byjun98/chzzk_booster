@@ -35,6 +35,7 @@
     forceDOM: false,
     gridBypass: true,
     adBlockVas: true,
+    adSpeedup: true,
     adSkip: true,
     autoclose: true,
   };
@@ -141,9 +142,48 @@
 
   function handleAds() {
     if (opts.autoclose) closeAdblockPopup();
+    ensureAdPoller();
+  }
+
+  // 광고 영상만 선별: 유한·짧은 길이(라이브는 Infinity/대용량 DVR이라 절대 대상 아님).
+  //  data-role="videoEl"(치지직 광고 영상 표식)을 우선하되, 최종 안전장치는 '유한 길이' 조건.
+  function getAdVideo() {
+    const vids = [...document.querySelectorAll('video')];
+    const isAd = (v) => isFinite(v.duration) && v.duration > 0 && v.duration < 300;
+    return (
+      vids.find((v) => isAd(v) && v.matches('[data-role="videoEl"]')) ||
+      vids.find(isAd) ||
+      null
+    );
+  }
+
+  // 광고가 떠 있는 동안 빠르게(80ms) 처리:
+  //  - 배속 순삭: 광고 영상을 끝으로 점프 + 10배속 (검증된 방식; 라이브는 안 건드림)
+  //  - SKIP 클릭: 카운트다운이 끝나 'SKIP'이 활성화되면 즉시 클릭
+  let adPoller = null;
+  function ensureAdPoller() {
+    const adUi = document.querySelector(
+      '.skip_area, [class*="skip_area"], .txt_skip, [class*="txt_skip"], .btn_skip, [class*="btn_skip"], [data-role="videoEl"]'
+    );
+    const active = (opts.adSpeedup || opts.adSkip) && !!adUi;
+    if (active) {
+      if (!adPoller) adPoller = setInterval(adPollTick, 80);
+    } else if (adPoller) {
+      clearInterval(adPoller);
+      adPoller = null;
+    }
+  }
+  function adPollTick() {
+    if (opts.adSpeedup) {
+      const ad = getAdVideo();
+      if (ad) {
+        try { if (ad.playbackRate !== 10) ad.playbackRate = 10; } catch (_) {}
+        try { if (isFinite(ad.duration) && ad.currentTime < ad.duration) ad.currentTime = ad.duration; } catch (_) {}
+      }
+    }
     if (opts.adSkip) {
-      const skip = findAdSkipButton();
-      if (skip) { skip.click(); bumpAdCount(); }
+      const b = findAdSkipButton();
+      if (b) { b.click(); bumpAdCount(); }
     }
   }
 

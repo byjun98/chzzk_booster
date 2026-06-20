@@ -1,5 +1,5 @@
-const DEFAULTS = { autoQuality: true, quality: '1080p', forceDOM: false, gridBypass: true, adBlockVas: true, adSkip: true, autoclose: true, hardBlock: false };
-const TOGGLES = ['autoQuality', 'forceDOM', 'gridBypass', 'adBlockVas', 'adSkip', 'autoclose', 'hardBlock'];
+const DEFAULTS = { autoQuality: true, quality: '1080p', forceDOM: false, gridBypass: true, adBlockVas: true, adSpeedup: true, adSkip: true, autoclose: true, hardBlock: false };
+const TOGGLES = ['autoQuality', 'forceDOM', 'gridBypass', 'adBlockVas', 'adSpeedup', 'adSkip', 'autoclose', 'hardBlock'];
 const $ = (s) => document.querySelector(s);
 const saved = $('#saved');
 
