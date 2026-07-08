@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>치지직 부스터 설정</title>
+<style>
+  :root{
+    --chz-green:#00FFA3; --chz-green-dim:#00D488;
+    --chz-green-glow:rgba(0,255,163,.25);
+    --bg-base:#0A0A0C; --bg-surface:#141417; --bg-surface-2:#1E1E23;
+    --border:#2A2A31; --text-primary:#F5F5F7; --text-secondary:#9A9AA5;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg-base);color:var(--text-primary);min-height:100vh;
+    font-family:'Pretendard',-apple-system,'Segoe UI','Malgun Gothic',sans-serif;
+    -webkit-font-smoothing:antialiased;padding:40px 20px}
+  .wrap{max-width:680px;margin:0 auto}
+  .brand{display:flex;align-items:center;gap:10px;font-size:22px;font-weight:800;letter-spacing:-.02em;margin-bottom:6px}
+  .bolt{color:var(--chz-green);filter:drop-shadow(0 0 8px var(--chz-green-glow))}
+  .sub{color:var(--text-secondary);font-size:13px;margin-bottom:28px}
+  .section{margin-bottom:28px}
+  .section h2{font-size:13px;font-weight:700;color:var(--chz-green-dim);text-transform:uppercase;
+    letter-spacing:.04em;margin-bottom:10px;padding-left:2px}
+  .row{display:flex;align-items:center;gap:14px;background:var(--bg-surface);
+    border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:8px}
+  .row .icon{font-size:18px;width:24px;text-align:center;flex-shrink:0}
+  .row .body{flex:1;min-width:0}
+  .row .label{font-size:15px;font-weight:600}
+  .row .desc{font-size:12.5px;color:var(--text-secondary);margin-top:3px;line-height:1.5}
+  .switch{position:relative;width:44px;height:24px;flex-shrink:0}
+  .switch input{opacity:0;width:0;height:0}
+  .track{position:absolute;inset:0;background:var(--bg-surface-2);border-radius:24px;cursor:pointer;transition:background .2s}
+  .track::before{content:"";position:absolute;height:20px;width:20px;left:2px;top:2px;background:#fff;border-radius:50%;transition:transform .2s}
+  .switch input:checked + .track{background:var(--chz-green);box-shadow:0 0 12px var(--chz-green-glow)}
+  .switch input:checked + .track::before{transform:translateX(20px)}
+  .switch input:focus-visible + .track{outline:2px solid var(--chz-green);outline-offset:2px}
+  .selectwrap{position:relative}
+  select{appearance:none;background:var(--bg-surface-2);color:var(--text-primary);border:1px solid var(--border);
+    border-radius:10px;padding:9px 34px 9px 12px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;min-width:140px}
+  select:focus-visible{outline:none;border-color:var(--chz-green);box-shadow:0 0 0 3px var(--chz-green-glow)}
+  .selectwrap::after{content:"▾";position:absolute;right:13px;top:50%;transform:translateY(-50%);color:var(--chz-green);pointer-events:none;font-size:12px}
+  .saved{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(10px);
+    background:var(--chz-green);color:#0A0A0C;font-weight:700;font-size:13px;padding:10px 18px;border-radius:24px;
+    opacity:0;transition:all .25s;box-shadow:0 6px 20px var(--chz-green-glow);pointer-events:none}
+  .saved.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">치지직 부스터</div>
+    <div class="sub">방송 화질 자동 설정 · 광고 차단 · 팝업 자동 닫기</div>
+
+    <div class="section">
+      <h2>화질</h2>
+      <div class="row">
+        <div class="body">
+          <div class="label">화질 자동 설정</div>
+          <div class="desc">방송 진입 시 아래 화질로 자동 전환합니다.</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="autoQuality" aria-label="화질 자동 설정"><span class="track"></span></label>
+      </div>
+      <div class="row">
+        <div class="body"><div class="label">기본 화질</div></div>
+        <div class="selectwrap">
+          <select id="quality" aria-label="기본 화질">
+            <option value="1080p">1080p (원본)</option>
+            <option value="720p">720p</option>
+            <option value="480p">480p</option>
+            <option value="360p">360p</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div class="body">
+          <div class="label">화질 강제 적용</div>
+          <div class="desc">설정 메뉴를 자동 조작해 화질을 확실히 적용합니다. 진입 직후 설정 메뉴가 순간 깜빡일 수 있어 기본은 꺼져 있으며, 저장값(localStorage)만으로 적용됩니다. localStorage로 화질이 안 바뀌는 방송에서만 켜세요.</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="forceDOM" aria-label="화질 강제 적용"><span class="track"></span></label>
+      </div>
+      <div class="row">
+        <div class="body">
+          <div class="label">그리드 우회</div>
+          <div class="desc">live-detail 응답에서 P2P/Grid 재생 경로를 제거해 직접 스트림 경로를 사용하게 합니다.</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="gridBypass" aria-label="그리드 우회"><span class="track"></span></label>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>광고 처리</h2>
+      <div class="row">
+        <div class="body">
+          <div class="label">VAS 광고 제거</div>
+          <div class="desc">광고 스케줄 응답을 비워 광고를 아예 안 뜨게 합니다. 요청은 정상 통과해 감지되지 않고 화질도 유지됩니다. 가장 깔끔한 기본 방식입니다. (uBlock 등에서 치지직을 예외처리해야 작동)</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="adBlockVas" aria-label="VAS 광고 제거"><span class="track"></span></label>
+      </div>
+      <div class="row">
+        <div class="body">
+          <div class="label">SKIP 버튼 자동 클릭</div>
+          <div class="desc">VAS 제거로 못 막은 광고에 SKIP 버튼이 뜨면 자동으로 눌러 건너뜁니다. 안전장치입니다.</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="adSkip" aria-label="SKIP 버튼 자동 클릭"><span class="track"></span></label>
+      </div>
+      <div class="row">
+        <div class="body">
+          <div class="label">네트워크 하드 차단 (실험적)</div>
+          <div class="desc">광고 요청을 아예 막습니다. 치지직이 "광고 차단 프로그램 감지" 팝업을 띄우거나 재생이 멈출 수 있어 기본 꺼짐입니다. VAS 제거가 있으면 보통 불필요합니다.</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="hardBlock" aria-label="네트워크 하드 차단"><span class="track"></span></label>
+      </div>
+      <div class="row">
+        <div class="body">
+          <div class="label">팝업 자동 닫기</div>
+          <div class="desc">광고차단 감지 팝업, 프로모·코치마크 등 방해 요소를 자동으로 닫습니다.</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="autoclose" aria-label="팝업 자동 닫기"><span class="track"></span></label>
+      </div>
+    </div>
+  </div>
+
+  <div class="saved" id="saved">저장됨</div>
+  <script src="options.js"></script>
+</body>
+</html>

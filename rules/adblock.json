@@ -1,0 +1,29 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": { "type": "block" },
+    "condition": {
+      "urlFilter": "||tvetamovie.pstatic.net^",
+      "resourceTypes": ["media", "xmlhttprequest", "image", "script", "sub_frame"]
+    }
+  },
+  {
+    "id": 2,
+    "priority": 1,
+    "action": { "type": "block" },
+    "condition": {
+      "urlFilter": "||glad-vod.pstatic.net^",
+      "resourceTypes": ["media", "xmlhttprequest"]
+    }
+  },
+  {
+    "id": 3,
+    "priority": 1,
+    "action": { "type": "block" },
+    "condition": {
+      "urlFilter": "||gfp.veta.naver.com^",
+      "resourceTypes": ["xmlhttprequest", "script", "image", "sub_frame"]
+    }
+  }
+]
