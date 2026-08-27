@@ -33,7 +33,7 @@ Chrome 확장 MV3 · JavaScript · HTML · CSS · chrome.storage · declarativeN
 
 치지직 부스터는 치지직 라이브 페이지에서 반복적으로 발생하는 시청 불편 요소를 줄이기 위해 만든 확장 프로그램입니다.
 
-라이브 방송 진입 시 화질이 낮게 시작되는 문제를 `localStorage` 기반 설정으로 보정하고, 필요할 때는 플레이어 설정 메뉴를 직접 조작해 목표 화질을 다시 적용합니다. 그리드 우회는 라이브 상세 응답에서 P2P/Grid 재생 경로를 제거하는 방식으로 처리합니다.
+라이브 방송 진입 시 화질이 낮게 시작되는 문제를 `localStorage` 기반 설정으로 보정하고, 필요할 때는 플레이어 설정 메뉴를 직접 조작해 목표 화질을 다시 적용합니다. 그리드 우회는 라이브 상세·재생 응답과 플레이어 SDK 터널 응답에서 P2P/Grid 재생 경로를 제거하는 방식으로 처리합니다.
 
 광고 처리 기능은 요청 자체를 무리하게 막는 방식보다 안전한 응답 보정과 자동 클릭을 우선합니다. 네트워크 하드 차단은 치지직의 광고 차단 감지 팝업을 유발할 수 있어 실험 기능으로 분리했습니다.
 
@@ -41,7 +41,7 @@ Chrome 확장 MV3 · JavaScript · HTML · CSS · chrome.storage · declarativeN
 
 - 방송 진입 시 지정한 기본 화질로 자동 전환
 - 플레이어 재초기화, 방송 이동, 광고 이후에도 화질 설정 재적용
-- live-detail 응답의 P2P/Grid 관련 필드 제거
+- live-detail, live-playback-json, 플레이어 SDK 터널 응답의 P2P/Grid 관련 필드 제거
 - 광고 스케줄 응답 보정과 SKIP 버튼 자동 클릭
 - 광고 차단 감지 팝업, 프로모션, 코치마크 자동 닫기
 - 팝업 메뉴에서 자주 쓰는 기능을 빠르게 켜고 끄는 흐름 제공
@@ -65,7 +65,7 @@ Chrome 확장 MV3 · JavaScript · HTML · CSS · chrome.storage · declarativeN
 | **화질 자동 설정** | 방송 진입 시 `live-player-video-track` 값을 지정한 화질로 세팅합니다. 기본값은 1080p입니다. |
 | **기본 화질 선택** | 1080p, 720p, 480p, 360p 중 목표 화질을 선택할 수 있습니다. |
 | **화질 강제 적용** | 저장값만으로 화질이 바뀌지 않는 경우 플레이어 설정 메뉴를 자동 조작해 화질을 적용합니다. |
-| **그리드 우회** | live-detail 응답에서 P2P/Grid 경로를 제거해 직접 스트림 경로를 사용하게 합니다. |
+| **그리드 우회** | live-detail, live-playback-json, 플레이어 SDK 터널 응답에서 P2P/Grid 경로를 제거해 직접 스트림 경로를 사용하게 합니다. |
 | **VAS 광고 제거** | 광고 스케줄(`vas`) 응답의 광고 구간을 비우고, 치지직 API 응답의 `skipPreRollAd`를 켜 프리롤 광고 호출을 줄입니다. |
 | **광고 순삭** | VAS로 막지 못한 프리롤(GFP `fxview` 등)이 뜨면 광고 영상만 골라 끝으로 점프시키고 10배속으로 순삭합니다. 라이브 영상은 건드리지 않습니다. |
 | **SKIP 버튼 자동 클릭** | 위 방식으로도 남은 광고에 SKIP 버튼이 나타나면 자동으로 클릭합니다. |
@@ -97,7 +97,7 @@ chrome.storage.sync
   - fetch 응답 보정
   - XHR 응답 보정
   - VAS 광고 스케줄 제거
-  - live-detail P2P/Grid 필드 제거
+  - live-detail, live-playback-json, 플레이어 SDK 터널 응답의 P2P/Grid 필드 제거
   |
   v
 치지직 플레이어
@@ -121,7 +121,7 @@ chrome.storage.sync
 | **chrome.storage.sync** | 팝업, 옵션 페이지, content script가 같은 설정값을 공유할 수 있습니다. |
 | **chrome.storage.local** | 광고 스킵 횟수처럼 동기화가 필요 없는 상태를 저장합니다. |
 | **declarativeNetRequest** | 사용자가 명시적으로 켠 경우 광고 요청을 브라우저 레벨에서 차단합니다. |
-| **페이지 전역 content script** | 페이지의 fetch/XHR을 직접 감싸 live-detail과 VAS 응답을 보정합니다. |
+| **페이지 전역 content script** | 페이지의 fetch/XHR을 직접 감싸 라이브 재생 정보와 VAS 응답을 보정합니다. |
 | **localStorage** | 치지직 플레이어가 읽는 화질 설정값과 페이지 전역 옵션 플래그 전달에 사용합니다. |
 
 ---
@@ -161,18 +161,20 @@ chrome.storage.sync
 
 ### 6-3. 그리드 우회
 
-그리드 우회는 live-detail 응답을 보정하는 방식으로 구현했습니다. 응답 안의 `content.p2pQuality`를 비우고, `livePlaybackJson` 내부의 P2P 관련 필드를 제거합니다.
+그리드 우회는 live-detail과 live-playback-json 응답을 보정하는 방식으로 구현했습니다. 최신 치지직에서 라이브 상세 정보를 플레이어 SDK 터널로 전달하는 경우에는 복호화된 JSON에도 같은 보정을 적용합니다. 응답 안의 `content.p2pQuality` 또는 `content.pq`를 비우고, `livePlaybackJson`과 `playbackJson` 내부의 P2P 관련 필드를 제거합니다.
 
 처리 대상은 다음과 같습니다.
 
 | 필드 | 처리 |
 | --- | --- |
 | `content.p2pQuality` | 빈 배열로 변경 |
+| `content.pq` | 빈 배열로 변경 |
 | `playback.meta.p2p` | false로 변경 |
-| `track.p2pPath` | 삭제 |
-| `track.p2pPathUrlEncoding` | 삭제 |
+| `playback.api[]`의 `p2p-config` | 삭제 |
+| `media/track.p2pPath` | 삭제 |
+| `media/track.p2pPathUrlEncoding` | 삭제 |
 
-fetch와 XHR 양쪽을 모두 감싸 같은 응답 보정이 적용되도록 했습니다. 토글을 끄면 원본 응답을 그대로 통과시킵니다.
+fetch와 XHR 양쪽을 감싸고, 두 경로를 우회하는 플레이어 SDK 터널의 JSON 역직렬화 결과에도 같은 응답 보정이 적용되도록 했습니다. 토글을 끄면 원본 응답을 그대로 통과시킵니다.
 
 ### 6-4. 광고 처리
 
@@ -280,6 +282,8 @@ chzzk/
 ├─ _locales/
 │  └─ ko/
 │     └─ messages.json
+├─ tests/
+│  └─ main-world.test.mjs
 └─ README.md
 ```
 
@@ -304,6 +308,12 @@ Edge에서도 같은 방식으로 사용할 수 있습니다.
 
 코드를 수정한 뒤에는 확장 프로그램 관리 화면에서 새로고침 버튼을 누르고, 열려 있는 치지직 탭도 다시 새로고침해야 합니다.
 
+응답 보정 로직은 Node.js 기본 테스트 러너로 검증할 수 있습니다. 브라우저 없이 `src/content/main-world.js`를 격리된 컨텍스트에서 실행한 뒤, fetch 경로와 XHR 경로, 플레이어 SDK 터널 경로에서 P2P 필드가 제거되는지 확인합니다.
+
+```bash
+node --test tests/main-world.test.mjs
+```
+
 ---
 
 ## 10. 권한과 저장소
@@ -325,4 +335,4 @@ Edge에서도 같은 방식으로 사용할 수 있습니다.
 - 광고 SKIP 버튼은 실제 광고 노출 상황에 따라 추가 보정이 필요할 수 있습니다. 특히 GFP `fxview` 오버레이 광고는 응답 보정으로 완전히 막기 어려워 스킵 버튼 자동 클릭에 의존합니다.
 - 네트워크 하드 차단은 광고 차단 감지 팝업을 유발할 수 있어 기본값을 꺼짐으로 유지합니다.
 - 화질 강제 적용은 플레이어 설정 메뉴를 자동 조작하므로 방송 진입 직후 잠깐의 UI 변화가 있을 수 있습니다.
-- 그리드 우회는 현재 live-detail 응답 구조를 기준으로 동작합니다.
+- 그리드 우회는 현재 live-detail, live-playback-json, 플레이어 SDK 터널 응답 구조를 기준으로 동작합니다.
