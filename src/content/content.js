@@ -23,8 +23,6 @@
 
   const ADBLOCK_POPUP_RE = /광고\s*차단\s*프로그램/;
   const SETTINGS_READY_EVENT = '__cb_settings_ready';
-  const GRID_LOG = '[치지직부스터:grid]';
-  console.info(GRID_LOG, 'ISOLATED 주입 완료 v0.1.3');
 
   const PROMO_LS_PATTERNS = [
     /CHEAT_KEY_POPUP/i, /CHEAT_KEY_TOOLTIP/i, /donation_coachmark/i,
@@ -172,7 +170,7 @@
     const adUi = document.querySelector(
       '.skip_area, [class*="skip_area"], .txt_skip, [class*="txt_skip"], .btn_skip, [class*="btn_skip"], [data-role="videoEl"]'
     );
-    const active = (opts.adSpeedup || opts.adSkip) && !!adUi;
+    const active = (opts.adSpeedup || opts.adSkip) && (!!adUi || !!getAdVideo());
     if (active) {
       if (!adPoller) adPoller = setInterval(adPollTick, 80);
     } else if (adPoller) {
@@ -301,7 +299,6 @@
         applyQualityLS();
         seedPromoLS();
         syncMainWorldFlags();
-        console.info(GRID_LOG, '저장 설정 로드 완료', { enabled: opts.gridBypass });
         notifyMainWorldSettingsReady();
       });
       chrome.storage.onChanged.addListener((changes, area) => {

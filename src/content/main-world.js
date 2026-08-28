@@ -4,12 +4,11 @@
   const AD_RE = /(^https?:\/\/[^/]*(?:veta|glad|ad)[^/]*\/)|\/(?:vas|vast|ad|ads)(?:[/?#]|$)/i;
   const LIVE_PLAYBACK_RE = /\/(?:live-detail|live-playback-json)(?:[/?#]|$)/i;
   const TUNNEL_RE = /\/service\/t(?:[/?#]|$)/i;
+  const AD_HINT_RE = /adBreaks|skipPreRollAd/;
   const NOADS_FLAG = '__cb_noads';
   const GRID_BYPASS_FLAG = '__cb_grid_bypass';
   const SETTINGS_READY_EVENT = '__cb_settings_ready';
-  const GRID_LOG = '[치지직부스터:grid]';
   const nativeJSONParse = JSON.parse;
-  console.info(GRID_LOG, 'MAIN 주입 완료 v0.1.3');
   let settingsReady = false;
   let resolveSettingsReady;
   const settingsReadyPromise = new Promise((resolve) => { resolveSettingsReady = resolve; });
@@ -17,7 +16,6 @@
     if (settingsReady) return;
     settingsReady = true;
     resolveSettingsReady();
-    console.info(GRID_LOG, '설정 준비 완료', { enabled: gridBypassEnabled() });
   }, { once: true });
   const waitForSettings = () => settingsReady
     ? Promise.resolve()
@@ -64,6 +62,43 @@
         changed = true;
       }
     });
+    return changed;
+  }
+
+  // livePlaybackJson 처럼 JSON 문자열로 중첩된 필드 안쪽의 광고 정보까지 정리한다.
+  function stripAdsNestedJson(value) {
+    let changed = false;
+    if (!value || typeof value !== 'object') return changed;
+
+    if (Array.isArray(value)) {
+      value.forEach((item) => { if (stripAdsNestedJson(item)) changed = true; });
+      return changed;
+    }
+
+    Object.keys(value).forEach((key) => {
+      const child = value[key];
+      if (typeof child === 'string') {
+        if (!AD_HINT_RE.test(child)) return;
+        try {
+          const parsed = nativeJSONParse(child);
+          if (stripAdsParsedValue(parsed)) {
+            value[key] = JSON.stringify(parsed);
+            changed = true;
+          }
+        } catch (_) {}
+      } else if (stripAdsNestedJson(child)) {
+        changed = true;
+      }
+    });
+    return changed;
+  }
+
+  // 이미 파싱된 객체에 광고 제거를 적용한다(SDK 터널처럼 텍스트를 만질 수 없는 경로용).
+  function stripAdsParsedValue(value) {
+    if (!value || typeof value !== 'object') return false;
+    let changed = clearAdBreaks(value);
+    if (forceSkipPreroll(value)) changed = true;
+    if (stripAdsNestedJson(value)) changed = true;
     return changed;
   }
 
@@ -195,9 +230,11 @@
   // SDK가 복호화한 JSON이 페이지 코드로 전달되는 지점에서 같은 P2P 보정을 적용한다.
   JSON.parse = function (...args) {
     const value = nativeJSONParse.apply(this, args);
-    if (gridBypassEnabled() && disableGridParsedValue(value)) {
-      console.info(GRID_LOG, '터널/JSON 응답 보정 완료');
-    }
+    if (gridBypassEnabled()) disableGridParsedValue(value);
+    // 광고 정보도 터널 경로로만 내려오므로 여기서 함께 제거한다.
+    // 전체 트리 순회 비용을 줄이려고, 원본 문자열에 광고 필드가 보일 때만 처리한다.
+    const raw = args[0];
+    if (noAdsEnabled() && typeof raw === 'string' && AD_HINT_RE.test(raw)) stripAdsParsedValue(value);
     return value;
   };
 
@@ -228,11 +265,7 @@
           : '';
     const isLivePlayback = typeof url === 'string' && LIVE_PLAYBACK_RE.test(url);
     const isTunnel = typeof url === 'string' && TUNNEL_RE.test(url);
-    if (isLivePlayback) {
-      console.info(GRID_LOG, 'fetch 포착', url);
-      await waitForSettings();
-    }
-    if (isTunnel) console.info(GRID_LOG, 'SDK 터널 fetch 포착', url);
+    if (isLivePlayback) await waitForSettings();
     let res;
     try {
       res = await origFetch.apply(this, args);
@@ -246,14 +279,8 @@
         let modified = text;
         if (shouldPatchAds) modified = stripAds(modified);
         if ((isLivePlayback || isTunnel) && gridBypassEnabled()) modified = stripGrid(modified);
-        if (modified !== text) {
-          if (isLivePlayback || isTunnel) console.info(GRID_LOG, 'fetch 응답 보정 완료', url);
-          return makeTextResponse(res, modified);
-        }
-        if (isLivePlayback || isTunnel) console.warn(GRID_LOG, 'fetch 응답 변경 없음', { url, enabled: gridBypassEnabled() });
-      } catch (error) {
-        if (isLivePlayback || isTunnel) console.error(GRID_LOG, 'fetch 응답 처리 실패', error);
-      }
+        if (modified !== text) return makeTextResponse(res, modified);
+      } catch (_) {}
     }
     return res;
   };
@@ -268,14 +295,16 @@
     const url = this.__cb_url;
     const isLivePlayback = typeof url === 'string' && LIVE_PLAYBACK_RE.test(url);
     const isTunnel = typeof url === 'string' && TUNNEL_RE.test(url);
-    if (isLivePlayback) console.info(GRID_LOG, 'XHR 포착', url);
-    if (isTunnel) console.info(GRID_LOG, 'SDK 터널 XHR 포착', url);
     const shouldPatch =
       typeof url === 'string' &&
       ((noAdsEnabled() && (AD_RE.test(url) || /chzzk|naver/i.test(url))) || isLivePlayback || isTunnel);
     if (shouldPatch) {
       this.addEventListener('readystatechange', function onRSC() {
         if (this.readyState === 4) {
+          // 터널 응답은 responseType 이 arraybuffer 라 responseText 접근만으로 예외가 난다.
+          // 이 경로는 SDK 가 복호화한 뒤 JSON.parse 훅에서 처리하므로 여기서는 건너뛴다.
+          const responseType = this.responseType;
+          if (responseType && responseType !== 'text') return;
           try {
             const original = this.responseText;
             let modified = original;
@@ -286,13 +315,8 @@
               // 오래된 우회 스크립트가 뒤에서 불완전한 응답으로 다시 덮어쓰지 못하게 고정한다.
               Object.defineProperty(this, 'responseText', { configurable: false, get: () => modified });
               Object.defineProperty(this, 'response', { configurable: false, get: () => modified });
-              if (isLivePlayback || isTunnel) console.info(GRID_LOG, 'XHR 응답 보정 완료', url);
-            } else if (isLivePlayback || isTunnel) {
-              console.warn(GRID_LOG, 'XHR 응답 변경 없음', { url, enabled: gridBypassEnabled() });
             }
-          } catch (error) {
-            if (isLivePlayback || isTunnel) console.error(GRID_LOG, 'XHR 응답 처리 실패', error);
-          }
+          } catch (_) {}
         }
       }, { capture: true });
     }

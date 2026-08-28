@@ -12,10 +12,10 @@ class FakeXMLHttpRequest {
   send() {}
 }
 
-function createHarness(payloads, { ready = true, XMLHttpRequestClass = FakeXMLHttpRequest } = {}) {
+function createHarness(payloads, { ready = true, XMLHttpRequestClass = FakeXMLHttpRequest, noAds = false } = {}) {
   const listeners = new Map();
   const storage = new Map([
-    ['__cb_noads', '0'],
+    ['__cb_noads', noAds ? '1' : '0'],
     ['__cb_grid_bypass', '1'],
   ]);
   let fetchCount = 0;
@@ -206,4 +206,51 @@ test('오래된 XHR 우회 스크립트가 완전한 보정 결과를 다시 덮
 
   const result = JSON.parse(xhr.responseText);
   assertPlaybackP2PRemoved(JSON.parse(result.content.livePlaybackJson));
+});
+
+test('터널로 내려온 광고 정보를 JSON.parse 단계에서 제거한다', () => {
+  const harness = createHarness({}, { noAds: true });
+  const result = harness.parse(JSON.stringify({
+    content: {
+      skipPreRollAd: false,
+      adBreaks: [{ position: 'pre' }],
+      livePlaybackJson: JSON.stringify({
+        meta: { p2p: false },
+        adBreaks: [{ position: 'mid', duration: 15 }],
+      }),
+    },
+  }));
+
+  assert.equal(result.content.adBreaks.length, 0);
+  assert.equal(result.content.skipPreRollAd, true);
+  assert.equal(JSON.parse(result.content.livePlaybackJson).adBreaks.length, 0);
+});
+
+test('arraybuffer 로 내려오는 터널 응답에서는 responseText 를 읽지 않는다', () => {
+  const url = 'https://api.chzzk.naver.com/service/t/abcd/efgh';
+
+  class ArrayBufferXHR {
+    constructor() {
+      this.listeners = [];
+      this.readyState = 0;
+      this.responseType = 'arraybuffer';
+    }
+    addEventListener(type, listener) {
+      if (type === 'readystatechange') this.listeners.push(listener);
+    }
+    get responseText() { throw new Error('responseText 에 접근하면 안 된다'); }
+    getResponseHeader() { return 'application/octet-stream'; }
+    open(method, requestUrl) { this.requestUrl = requestUrl; }
+    send() {
+      this.readyState = 4;
+      this.listeners.forEach((listener) => listener.call(this));
+    }
+  }
+
+  const harness = createHarness({}, { ready: false, XMLHttpRequestClass: ArrayBufferXHR });
+  harness.dispatchSettingsReady();
+
+  const xhr = new ArrayBufferXHR();
+  xhr.open('GET', url);
+  assert.doesNotThrow(() => xhr.send());
 });
