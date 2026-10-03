@@ -1,23 +1,37 @@
-const RULESET_ID = 'adblock';
+// 설정 키 → declarativeNetRequest 룰셋 ID 대응표.
+const RULESETS = {
+  hardBlock: 'adblock',
+  adBlockTunnelMedia: 'tunnel-ad',
+};
 
-async function syncRuleset() {
+const DEFAULTS = { hardBlock: false, adBlockTunnelMedia: false };
+
+async function syncRulesets() {
   try {
-    const { hardBlock = false } = await chrome.storage.sync.get({ hardBlock: false });
+    const settings = await chrome.storage.sync.get(DEFAULTS);
     const enabled = await chrome.declarativeNetRequest.getEnabledRulesets();
-    const isOn = enabled.includes(RULESET_ID);
-    if (hardBlock && !isOn) {
-      await chrome.declarativeNetRequest.updateEnabledRulesets({ enableRulesetIds: [RULESET_ID] });
-    } else if (!hardBlock && isOn) {
-      await chrome.declarativeNetRequest.updateEnabledRulesets({ disableRulesetIds: [RULESET_ID] });
+    const enableRulesetIds = [];
+    const disableRulesetIds = [];
+
+    Object.entries(RULESETS).forEach(([key, rulesetId]) => {
+      const want = settings[key] === true;
+      const isOn = enabled.includes(rulesetId);
+      if (want && !isOn) enableRulesetIds.push(rulesetId);
+      else if (!want && isOn) disableRulesetIds.push(rulesetId);
+    });
+
+    if (enableRulesetIds.length || disableRulesetIds.length) {
+      await chrome.declarativeNetRequest.updateEnabledRulesets({ enableRulesetIds, disableRulesetIds });
     }
   } catch (_) {}
 }
 
-chrome.runtime.onInstalled.addListener(syncRuleset);
-chrome.runtime.onStartup.addListener(syncRuleset);
+chrome.runtime.onInstalled.addListener(syncRulesets);
+chrome.runtime.onStartup.addListener(syncRulesets);
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' && changes.hardBlock) syncRuleset();
+  if (area !== 'sync') return;
+  if (Object.keys(RULESETS).some((key) => key in changes)) syncRulesets();
 });
 
 chrome.runtime.onMessage.addListener((msg) => {

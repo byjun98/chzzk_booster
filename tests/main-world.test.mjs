@@ -12,12 +12,14 @@ class FakeXMLHttpRequest {
   send() {}
 }
 
-function createHarness(payloads, { ready = true, XMLHttpRequestClass = FakeXMLHttpRequest, noAds = false } = {}) {
+function createHarness(payloads, { ready = true, XMLHttpRequestClass = FakeXMLHttpRequest, noAds = false, debug = false } = {}) {
   const listeners = new Map();
   const storage = new Map([
     ['__cb_noads', noAds ? '1' : '0'],
     ['__cb_grid_bypass', '1'],
+    ['__cb_debug', debug ? '1' : '0'],
   ]);
+  const logs = [];
   let fetchCount = 0;
 
   const document = {
@@ -40,6 +42,7 @@ function createHarness(payloads, { ready = true, XMLHttpRequestClass = FakeXMLHt
     Response,
     XMLHttpRequest: XMLHttpRequestClass,
     clearTimeout,
+    console: { info: (message) => logs.push(String(message)) },
     document,
     localStorage: {
       getItem: (key) => storage.get(key) ?? null,
@@ -59,6 +62,7 @@ function createHarness(payloads, { ready = true, XMLHttpRequestClass = FakeXMLHt
     fetch: (...args) => window.fetch(...args),
     parse: (text) => pageJSONParse(text),
     getFetchCount: () => fetchCount,
+    getLogs: () => logs,
   };
 }
 
@@ -253,4 +257,39 @@ test('arraybuffer 로 내려오는 터널 응답에서는 responseText 를 읽�
   const xhr = new ArrayBufferXHR();
   xhr.open('GET', url);
   assert.doesNotThrow(() => xhr.send());
+});
+
+test('진단 로그를 켜면 터널 응답의 광고 후보 필드를 보고한다', () => {
+  const harness = createHarness({}, { debug: true });
+  harness.parse(JSON.stringify({
+    content: {
+      adControlType: 'STUDIO_CONTROL',
+      adCount: 2,
+      creativeUrl: 'https://api.chzzk.naver.com/service/t/abc/def/ghi',
+      title: '광고와 무관한 값',
+    },
+  }));
+
+  const report = harness.getLogs().join('\n');
+  assert.match(report, /광고 후보 필드/);
+  assert.match(report, /content\.adControlType = STUDIO_CONTROL/);
+  assert.match(report, /content\.adCount = 2/);
+  assert.match(report, /content\.creativeUrl = https:\/\/api\.chzzk\.naver\.com\/service\/t\//);
+  assert.equal(report.includes('content.title'), false);
+});
+
+test('같은 광고 응답을 여러 번 만나도 한 번만 보고한다', () => {
+  const harness = createHarness({}, { debug: true });
+  const payload = JSON.stringify({ adBreaks: [{ position: 0 }] });
+  harness.parse(payload);
+  harness.parse(payload);
+
+  assert.equal(harness.getLogs().length, 1);
+});
+
+test('진단 로그가 꺼져 있으면 아무것도 기록하지 않는다', () => {
+  const harness = createHarness({});
+  harness.parse(JSON.stringify({ content: { adControlType: 'STUDIO_CONTROL' } }));
+
+  assert.equal(harness.getLogs().length, 0);
 });

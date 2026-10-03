@@ -7,6 +7,7 @@
   const AD_HINT_RE = /adBreaks|skipPreRollAd/;
   const NOADS_FLAG = '__cb_noads';
   const GRID_BYPASS_FLAG = '__cb_grid_bypass';
+  const DEBUG_FLAG = '__cb_debug';
   const SETTINGS_READY_EVENT = '__cb_settings_ready';
   const nativeJSONParse = JSON.parse;
   let settingsReady = false;
@@ -25,6 +26,107 @@
   };
   const noAdsEnabled = () => flagEnabled(NOADS_FLAG);
   const gridBypassEnabled = () => flagEnabled(GRID_BYPASS_FLAG);
+  // 진단 로그는 기본으로 꺼 두고, 설정에서 켰을 때에만 동작한다.
+  const debugEnabled = () => {
+    try { return localStorage.getItem(DEBUG_FLAG) === '1'; } catch (_) { return false; }
+  };
+
+  // ---- 진단용 광고 필드 탐지 ----
+  // 치지직이 광고 정보를 암호화 터널로 옮기면서 필드 이름이 바뀌었을 가능성이 있다.
+  // 광고로 의심되는 키와 미디어 주소를 모아 콘솔에 한 번씩만 보고한다.
+  const DEBUG_KEY_RE = /^ads?$|^ad[A-Z_]|^(?:vast|vas|pre-?roll|mid-?roll|post-?roll|creative|commercial|skip)/i;
+  const DEBUG_KEY_SUFFIX_RE = /(?:Ad|Ads|AdBreak|AdBreaks|Skip|Vast)$/;
+  const DEBUG_MEDIA_RE = /\/service\/t\/|\.mp4(?:[?#]|$)|\.m3u8(?:[?#]|$)/i;
+  const debugReported = new Set();
+
+  function looksLikeAdKey(key) {
+    return DEBUG_KEY_RE.test(key) || DEBUG_KEY_SUFFIX_RE.test(key);
+  }
+
+  function collectAdShape(value, path, hits, depth) {
+    if (depth > 8 || hits.length >= 40 || !value || typeof value !== 'object') return;
+
+    if (Array.isArray(value)) {
+      value.slice(0, 20).forEach((item, index) => {
+        collectAdShape(item, path + '[' + index + ']', hits, depth + 1);
+      });
+      return;
+    }
+
+    Object.keys(value).forEach((key) => {
+      if (hits.length >= 40) return;
+      const child = value[key];
+      const childPath = path ? path + '.' + key : key;
+      const keyLooksAd = looksLikeAdKey(key);
+
+      if (typeof child === 'string') {
+        if (keyLooksAd || DEBUG_MEDIA_RE.test(child)) {
+          hits.push(childPath + ' = ' + child.slice(0, 300));
+        }
+        return;
+      }
+      if (child === null || typeof child !== 'object') {
+        if (keyLooksAd) hits.push(childPath + ' = ' + String(child));
+        return;
+      }
+      if (keyLooksAd) {
+        hits.push(childPath + ' = <' + (Array.isArray(child) ? 'array(' + child.length + ')' : 'object') + '>');
+      }
+      collectAdShape(child, childPath, hits, depth + 1);
+    });
+  }
+
+  function reportAdShape(value, source) {
+    if (!debugEnabled()) return;
+    const hits = [];
+    try { collectAdShape(value, '', hits, 0); } catch (_) { return; }
+    if (!hits.length) return;
+
+    const signature = source + '|' + hits.join('\n');
+    if (debugReported.has(signature)) return;
+    debugReported.add(signature);
+    try {
+      if (typeof console !== 'undefined' && console.info) {
+        console.info('[치지직 부스터] 광고 후보 필드 (' + source + ')\n' + hits.join('\n'));
+      }
+    } catch (_) {}
+  }
+
+  // 영상 광고가 JSON이 아니라 VAST(XML)로 내려오는 경우를 잡기 위한 진단용 훅이다.
+  const vastReported = new Set();
+  function reportVast(text) {
+    const key = text.slice(0, 200);
+    if (vastReported.has(key)) return;
+    vastReported.add(key);
+    const skipOffset = (text.match(/skipoffset\s*=\s*"([^"]*)"/i) || [])[1] || '(없음)';
+    const duration = (text.match(/<Duration[^>]*>\s*(?:<!\[CDATA\[)?\s*([0-9:.]+)/i) || [])[1] || '(없음)';
+    const mediaFiles = (text.match(/https?:\/\/[^\s"'<\]]+/g) || [])
+      .filter((url) => /\.mp4|\.m3u8|\/service\/t\//i.test(url))
+      .slice(0, 5);
+    try {
+      if (typeof console !== 'undefined' && console.info) {
+        console.info('[치지직 부스터] VAST 영상 광고 감지', {
+          스킵가능시점: skipOffset,
+          길이: duration,
+          영상주소: mediaFiles,
+          본문앞부분: text.slice(0, 1200),
+        });
+      }
+    } catch (_) {}
+  }
+
+  if (typeof DOMParser !== 'undefined' && DOMParser.prototype && DOMParser.prototype.parseFromString) {
+    const origParseFromString = DOMParser.prototype.parseFromString;
+    DOMParser.prototype.parseFromString = function (text, type, ...rest) {
+      const doc = origParseFromString.call(this, text, type, ...rest);
+      try {
+        if (debugEnabled() && typeof text === 'string' && /<VAST|<MediaFile|<Ad[\s>]/i.test(text)) {
+          reportVast(text);
+        }
+      } catch (_) {}
+      return doc;
+    };
+  }
 
   function clearAdBreaks(value) {
     let changed = false;
@@ -105,6 +207,7 @@
   function stripAds(text) {
     try {
       const j = nativeJSONParse(text);
+      reportAdShape(j, 'fetch/XHR 본문');
       let changed = clearAdBreaks(j);
       if (forceSkipPreroll(j)) changed = true;
       if (changed) {
@@ -235,6 +338,8 @@
     // 전체 트리 순회 비용을 줄이려고, 원본 문자열에 광고 필드가 보일 때만 처리한다.
     const raw = args[0];
     if (noAdsEnabled() && typeof raw === 'string' && AD_HINT_RE.test(raw)) stripAdsParsedValue(value);
+    // 터널 응답은 SDK가 복호화한 뒤 이 지점을 지나므로, 새 광고 필드를 찾기에 가장 좋은 자리다.
+    reportAdShape(value, 'SDK 터널(JSON.parse)');
     return value;
   };
 

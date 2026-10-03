@@ -119,10 +119,28 @@
       </div>
       <div class="row">
         <div class="body">
+          <div class="label">터널 광고 영상 차단 (실험적)</div>
+          <div class="desc">치지직이 광고 영상을 자체 API 주소(/service/t/…)로 내려주기 시작해, 호스트만으로는 광고와 일반 통신을 구분할 수 없습니다. 이 항목은 그 주소로 오는 요청 중 <b>영상(media)</b>만 골라 차단합니다. 일반 API 통신과 라이브 영상은 건드리지 않지만, 치지직이 광고 차단을 감지하거나 재생이 멈출 수 있어 기본 꺼짐입니다.</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="adBlockTunnelMedia" aria-label="터널 광고 영상 차단"><span class="track"></span></label>
+      </div>
+      <div class="row">
+        <div class="body">
           <div class="label">팝업 자동 닫기</div>
           <div class="desc">광고차단 감지 팝업, 프로모·코치마크 등 방해 요소를 자동으로 닫습니다.</div>
         </div>
         <label class="switch"><input type="checkbox" id="autoclose" aria-label="팝업 자동 닫기"><span class="track"></span></label>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>진단</h2>
+      <div class="row">
+        <div class="body">
+          <div class="label">진단 로그</div>
+          <div class="desc">광고 응답에서 광고로 의심되는 필드와 영상 주소를 찾아 개발자 도구 콘솔에 기록합니다. 광고 방식이 또 바뀌었을 때 새 필드 이름을 확인하는 용도이며, 평소에는 꺼 두세요. (F12 → Console 에서 "치지직 부스터"로 검색)</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="debug" aria-label="진단 로그"><span class="track"></span></label>
       </div>
     </div>
   </div>

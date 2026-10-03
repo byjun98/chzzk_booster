@@ -1,0 +1,11 @@
+[
+  {
+    "id": 10,
+    "priority": 1,
+    "action": { "type": "block" },
+    "condition": {
+      "urlFilter": "||chzzk.naver.com/service/t/",
+      "resourceTypes": ["media"]
+    }
+  }
+]

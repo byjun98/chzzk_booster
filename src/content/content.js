@@ -23,6 +23,9 @@
 
   const ADBLOCK_POPUP_RE = /광고\s*차단\s*프로그램/;
   const SETTINGS_READY_EVENT = '__cb_settings_ready';
+  // 치지직이 광고 영상을 자체 API 도메인의 암호화 터널(/service/t/…)로 내려주기 시작했다.
+  // 라이브 본편은 MSE(blob: 주소)로 재생되므로, 이 주소를 그대로 쓰는 video 는 광고로 확정할 수 있다.
+  const TUNNEL_MEDIA_RE = /^https?:\/\/[^/]*chzzk[^/]*\/service\/t\//i;
 
   const PROMO_LS_PATTERNS = [
     /CHEAT_KEY_POPUP/i, /CHEAT_KEY_TOOLTIP/i, /donation_coachmark/i,
@@ -39,7 +42,13 @@
     adSpeedup: true,
     adSkip: true,
     autoclose: true,
+    debug: false,
   };
+
+  function debugLog(...args) {
+    if (!opts.debug) return;
+    try { console.info('[치지직 부스터]', ...args); } catch (_) {}
+  }
 
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -51,6 +60,7 @@
     try {
       setFlag('__cb_noads', opts.adBlockVas);
       setFlag('__cb_grid_bypass', opts.gridBypass);
+      setFlag('__cb_debug', opts.debug);
     } catch (_) {}
   }
 
@@ -150,16 +160,47 @@
     ensureAdPoller();
   }
 
-  // 광고 영상만 선별: 유한·짧은 길이(라이브는 Infinity/대용량 DVR이라 절대 대상 아님).
-  //  data-role="videoEl"(치지직 광고 영상 표식)을 우선하되, 최종 안전장치는 '유한 길이' 조건.
+  // 재생 주소가 암호화 터널을 가리키는 video 는 광고로 확정한다.
+  // 라이브 본편은 MSE 로 재생되어 주소가 blob: 으로 시작하므로 여기에 걸리지 않는다.
+  function isTunnelAdVideo(v) {
+    try { return TUNNEL_MEDIA_RE.test(v.currentSrc || v.src || ''); } catch (_) { return false; }
+  }
+
+  // 광고 영상만 선별한다.
+  //  1순위: 터널 주소로 재생되는 영상(길이를 따지지 않는다. 새 광고는 파일이 매우 클 수 있다.)
+  //  2순위: data-role="videoEl"(치지직 광고 영상 표식) + 유한·짧은 길이
+  //  3순위: 유한·짧은 길이(라이브는 Infinity/대용량 DVR이라 절대 대상 아님)
   function getAdVideo() {
     const vids = [...document.querySelectorAll('video')];
-    const isAd = (v) => isFinite(v.duration) && v.duration > 0 && v.duration < 300;
+    const isShortAd = (v) => isFinite(v.duration) && v.duration > 0 && v.duration < 300;
     return (
-      vids.find((v) => isAd(v) && v.matches('[data-role="videoEl"]')) ||
-      vids.find(isAd) ||
+      vids.find(isTunnelAdVideo) ||
+      vids.find((v) => isShortAd(v) && v.matches('[data-role="videoEl"]')) ||
+      vids.find(isShortAd) ||
       null
     );
+  }
+
+  // 광고 UI가 떠 있는데도 광고 영상을 고르지 못하면, 화면의 video 요소를 통째로 기록한다.
+  // '넘어가지 않는 광고'의 원인을 찾기 위한 진단 경로다.
+  let lastUnmatchedSignature = '';
+  function logUnmatchedAdUi(adUi) {
+    if (!opts.debug || !adUi) return;
+    const videos = [...document.querySelectorAll('video')].map((v) => ({
+      주소: (v.currentSrc || v.src || '(없음)').slice(0, 200),
+      길이: v.duration,
+      재생위치: v.currentTime,
+      준비상태: v.readyState,
+      광고표식: v.matches('[data-role="videoEl"]'),
+    }));
+    const signature = JSON.stringify(videos);
+    if (signature === lastUnmatchedSignature) return;
+    lastUnmatchedSignature = signature;
+    debugLog('광고 UI는 있으나 광고 영상을 고르지 못함', {
+      광고UI: adUi.className || adUi.tagName,
+      UI문구: (adUi.textContent || '').trim().slice(0, 60),
+      화면의영상: videos,
+    });
   }
 
   // 광고가 떠 있는 동안 빠르게(80ms) 처리:
@@ -170,7 +211,9 @@
     const adUi = document.querySelector(
       '.skip_area, [class*="skip_area"], .txt_skip, [class*="txt_skip"], .btn_skip, [class*="btn_skip"], [data-role="videoEl"]'
     );
-    const active = (opts.adSpeedup || opts.adSkip) && (!!adUi || !!getAdVideo());
+    const adVideo = getAdVideo();
+    if (adUi && !adVideo) logUnmatchedAdUi(adUi);
+    const active = (opts.adSpeedup || opts.adSkip) && (!!adUi || !!adVideo);
     if (active) {
       if (!adPoller) adPoller = setInterval(adPollTick, 80);
     } else if (adPoller) {
@@ -178,17 +221,77 @@
       adPoller = null;
     }
   }
+  let lastLoggedAdSrc = '';
+  let stuckTicks = 0;
+  function logAdVideoOnce(ad) {
+    if (!opts.debug) return;
+    const src = (ad.currentSrc || ad.src || '(주소 없음)');
+    if (src === lastLoggedAdSrc) return;
+    lastLoggedAdSrc = src;
+    stuckTicks = 0;
+    debugLog('광고 영상 감지', {
+      주소: src.slice(0, 300),
+      길이: ad.duration,
+      터널경로: isTunnelAdVideo(ad),
+      광고표식: ad.matches('[data-role="videoEl"]'),
+    });
+  }
+
+  // 끝점프를 걸었는데도 재생 위치가 따라오지 않으면(탐색이 막힌 광고) 한 번 기록한다.
+  function logStuckAd(ad) {
+    if (!opts.debug) return;
+    if (!isFinite(ad.duration) || ad.duration - ad.currentTime <= 1) {
+      stuckTicks = 0;
+      return;
+    }
+    stuckTicks += 1;
+    if (stuckTicks !== 25) return;
+    let seekable = '(확인 불가)';
+    try {
+      const ranges = [];
+      for (let i = 0; i < ad.seekable.length; i++) ranges.push([ad.seekable.start(i), ad.seekable.end(i)]);
+      seekable = ranges;
+    } catch (_) {}
+    debugLog('끝점프가 적용되지 않는 광고', {
+      주소: (ad.currentSrc || ad.src || '(없음)').slice(0, 300),
+      길이: ad.duration,
+      재생위치: ad.currentTime,
+      배속: ad.playbackRate,
+      탐색가능구간: seekable,
+      일시정지: ad.paused,
+    });
+  }
+
+  let lastSkipUiText = '';
+  function logSkipUi() {
+    if (!opts.debug) return;
+    const ui = document.querySelector(
+      '.skip_area, [class*="skip_area"], .btn_skip, [class*="btn_skip"], .txt_skip, [class*="txt_skip"]'
+    );
+    const text = ui ? (ui.textContent || '').trim().slice(0, 40) : '';
+    if (text === lastSkipUiText) return;
+    lastSkipUiText = text;
+    if (text) debugLog('SKIP UI 문구 변화', text, '클릭대상여부', !!findAdSkipButton());
+  }
+
   function adPollTick() {
     if (opts.adSpeedup) {
       const ad = getAdVideo();
       if (ad) {
+        logAdVideoOnce(ad);
         try { if (ad.playbackRate !== 10) ad.playbackRate = 10; } catch (_) {}
         try { if (isFinite(ad.duration) && ad.currentTime < ad.duration) ad.currentTime = ad.duration; } catch (_) {}
+        logStuckAd(ad);
       }
     }
+    logSkipUi();
     if (opts.adSkip) {
       const b = findAdSkipButton();
-      if (b) { b.click(); bumpAdCount(); }
+      if (b) {
+        debugLog('SKIP 버튼 클릭', (b.textContent || '').trim().slice(0, 40));
+        b.click();
+        bumpAdCount();
+      }
     }
   }
 
